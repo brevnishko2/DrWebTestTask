@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, send_file
 from flask_sqlalchemy import SQLAlchemy
 import hashlib
 from os import path, remove, mkdir, listdir
@@ -43,6 +43,14 @@ class Files(db.Model):
 
 @app.route("/upload", methods=["POST"])
 def upload_file():
+    """
+    Загружает файл на сервер из аргумента http.files. Необходима авторизация
+    Args:
+        file: file-like obj
+    Return:
+        (str: имя файла/ошибка, int: status_code)
+
+    """
     auth = request.headers.get("Authorization", " ")
     authorized = User.query.filter_by(base_auth=auth).first()
 
@@ -70,12 +78,21 @@ def upload_file():
             inf.write(data)
         db.session.add(Files(authorized.id, file_name))
         db.session.commit()
-        return file_name
+        return file_name, 200
+
     return "Unauthorized", 403
 
 
 @app.route("/delete", methods=["GET", "POST"])
 def delete_file():
+    """
+    Удаляет файл по id. Требует авторизации и владения удаляемым файлом
+    Args:
+        file_name: string
+    Return:
+        (str: успех/ошибка, int: status_code)
+
+    """
     auth = request.headers.get("Authorization", " ")
     file_name = request.args.get("file_name", " ")
     authorized = User.query.filter_by(base_auth=auth).first()
@@ -99,14 +116,20 @@ def delete_file():
 
 @app.route("/download", methods=["GET"])
 def download_file():
+    """
+    Позволяет скачать файл с сервера. Не требует авторизации.
+    Args:
+        file_name: string
+    Return:
+        file
+
+    """
     file_name = request.args.get("file_name", " ")
     file_path = path.join(*[BASE_DIR, "store", file_name[0:2], file_name])
 
     # если такой файл существует - отправляем его
     if path.exists(file_path):
-        with open(file_path, "r") as inf:
-            data = inf.read()
-        return data
+        return send_file(file_path)
 
     return (
         "Record not found. Try to specify file_name arg or make sure it's correct",
@@ -115,4 +138,4 @@ def download_file():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()
