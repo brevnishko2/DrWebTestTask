@@ -56,7 +56,6 @@ def upload_file():
     if not authorized:
         return "Unauthorized", 403
 
-    md5 = hashlib.md5()
     if "file" not in request.files:
         return "No file part", 400
     file = request.files["file"]
@@ -65,6 +64,7 @@ def upload_file():
 
     # предполагаю, что файл не будет большим и не потребует дополнительной обработки
     data = file.read()
+    md5 = hashlib.md5()
     md5.update(data)
     # если нужно сохранить расширение файла:
     # file_name = (str(md5.hexdigest()) + file.filename[file.filename.rindex('.'):])
