@@ -10,7 +10,6 @@ app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///app.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
-md5 = hashlib.md5()
 BASE_DIR = path.dirname(__name__)
 
 
@@ -54,33 +53,34 @@ def upload_file():
     auth = request.headers.get("Authorization", " ")
     authorized = User.query.filter_by(base_auth=auth).first()
 
-    if authorized:
-        if "file" not in request.files:
-            return "No file part", 400
-        file = request.files["file"]
-        if file.filename == "":
-            return "No selected file", 400
+    if not authorized:
+        return "Unauthorized", 403
 
-        # предполагаю, что файл не будет большим и не потребует дополнительной обработки
-        data = file.read()
-        md5.update(data)
-        # если нужно сохранить расширение файла:
-        # file_name = (str(md5.hexdigest()) + file.filename[file.filename.rindex('.'):])
-        # без сохранения расширения:
-        file_name = str(md5.hexdigest())
-        dir_path = path.join(*[BASE_DIR, "store", file_name[0:2]])
-        if not path.exists:
-            mkdir(dir_path)
-        else:
-            if path.exists(path.join(dir_path, file_name)):
-                return "File has already existed", 208
-        with open(path.join(dir_path, file_name), "wb") as inf:
-            inf.write(data)
-        db.session.add(Files(authorized.id, file_name))
-        db.session.commit()
-        return file_name, 200
+    md5 = hashlib.md5()
+    if "file" not in request.files:
+        return "No file part", 400
+    file = request.files["file"]
+    if file.filename == "":
+        return "No selected file", 400
 
-    return "Unauthorized", 403
+    # предполагаю, что файл не будет большим и не потребует дополнительной обработки
+    data = file.read()
+    md5.update(data)
+    # если нужно сохранить расширение файла:
+    # file_name = (str(md5.hexdigest()) + file.filename[file.filename.rindex('.'):])
+    # без сохранения расширения:
+    file_name = str(md5.hexdigest())
+    dir_path = path.join(*[BASE_DIR, "store", file_name[0:2]])
+    if not path.exists:
+        mkdir(dir_path)
+    else:
+        if path.exists(path.join(dir_path, file_name)):
+            return "File has already existed", 208
+    with open(path.join(dir_path, file_name), "wb") as inf:
+        inf.write(data)
+    db.session.add(Files(authorized.id, file_name))
+    db.session.commit()
+    return file_name, 200
 
 
 @app.route("/delete", methods=["GET", "POST"])
@@ -97,21 +97,23 @@ def delete_file():
     file_name = request.args.get("file_name", " ")
     authorized = User.query.filter_by(base_auth=auth).first()
 
-    if authorized:
-        # ищем файл и проверяем его хозяина. Если все ок - удаляем
-        file = Files.query.filter_by(file_name=file_name).first()
-        file_path = path.join(*[BASE_DIR, "store", file_name[0:2], file_name])
-        if file.owner_id == authorized.id and path.exists(file_path):
-            remove(file_path)
-            # проверяем, есть ли еще файлы в данной директории. Если нет - удаляем и ее
-            if not listdir(path.join(*[BASE_DIR, "store", file_name[0:2]])):
-                remove(path.join(*[BASE_DIR, "store", file_name[0:2]]))
-            db.session.delete(file)
-            db.session.commit()
-            return "Deleted", 200
+    if not authorized:
+        return "Unauthorized", 403
 
-        return "No such file or this file does not belong to you", 400
-    return "Unauthorized", 403
+    # ищем файл и проверяем его хозяина. Если все ок - удаляем
+    file = Files.query.filter_by(file_name=file_name).first()
+    file_path = path.join(*[BASE_DIR, "store", file_name[0:2], file_name])
+    if file.owner_id == authorized.id and path.exists(file_path):
+        remove(file_path)
+        # проверяем, есть ли еще файлы в данной директории. Если нет - удаляем и ее
+        if not listdir(path.join(*[BASE_DIR, "store", file_name[0:2]])):
+            remove(path.join(*[BASE_DIR, "store", file_name[0:2]]))
+        db.session.delete(file)
+        db.session.commit()
+        return "Deleted", 200
+
+    return "No such file or this file does not belong to you", 400
+
 
 
 @app.route("/download", methods=["GET"])
@@ -129,7 +131,7 @@ def download_file():
 
     # если такой файл существует - отправляем его
     if path.exists(file_path):
-        return send_file(file_path)
+        return send_file(file_path), 200
 
     return (
         "Record not found. Try to specify file_name arg or make sure it's correct",
